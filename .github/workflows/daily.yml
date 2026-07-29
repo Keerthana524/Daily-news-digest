@@ -1,0 +1,40 @@
+name: Daily News Digest
+
+on:
+  schedule:
+    - cron: "30 1 * * *"    # 01:30 UTC = 07:00 IST, every day
+  workflow_dispatch:          # also lets you trigger a run manually from the Actions tab
+
+permissions:
+  contents: write             # needed to commit the updated preferences.json
+
+jobs:
+  send-digest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run digest
+        env:
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+          GMAIL_ADDRESS: ${{ secrets.GMAIL_ADDRESS }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+          RECIPIENT_EMAIL: ${{ secrets.RECIPIENT_EMAIL }}
+          FEEDBACK_SHEET_CSV_URL: ${{ secrets.FEEDBACK_SHEET_CSV_URL }}
+          FEEDBACK_APPS_SCRIPT_URL: ${{ secrets.FEEDBACK_APPS_SCRIPT_URL }}
+        run: python digest.py
+
+      - name: Save preferences and archive
+        run: |
+          git config user.name "github-actions"
+          git config user.email "actions@github.com"
+          git add preferences.json docs/
+          git commit -m "Daily brief: update preferences and archive" || echo "no changes to commit"
+          git push
