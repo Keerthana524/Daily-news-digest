@@ -80,8 +80,8 @@ def fetch_feedback():
 def get_news():
     """Ask Gemini for today's news as structured JSON, using Google Search grounding.
 
-    Uses the free tier (gemini-2.5-flash). Google Search grounding lets the
-    model pull current headlines instead of relying on stale training data.
+    Uses the free tier (gemini-flash-latest, an alias that always points to the
+    current Flash model, so it won't break when Google rotates versions).
     """
     client = genai.Client(api_key=GEMINI_API_KEY)
     today = datetime.date.today().strftime("%A, %d %B %Y")
@@ -102,7 +102,7 @@ Give 4-5 stories per category. Keep it factual and current.
 Sports should lean cricket. Current affairs should lean India."""
 
     resp = client.models.generate_content(
-        model="gemini-2.5-flash",
+        model="gemini-flash-latest",
         contents=prompt,
         config=types.GenerateContentConfig(
             tools=[types.Tool(google_search=types.GoogleSearch())],
