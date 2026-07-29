@@ -1,0 +1,11 @@
+{
+  "category_weights": {
+    "ai": 1.0,
+    "technology": 1.0,
+    "current_affairs": 1.0,
+    "sports": 1.0
+  },
+  "keyword_weights": {},
+  "learning_rate": 0.15,
+  "last_feedback_row": 0
+}

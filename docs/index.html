@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Daily Brief · Archive</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500&family=JetBrains+Mono:wght@400;500&family=Space+Grotesk:wght@500;600&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<main class="wrap">
+  <p class="eyebrow">Daily Brief · Archive</p>
+  <h1 class="title">Every morning, filtered.</h1>
+  <p class="lede">A searchable log of an automated daily news brief — AI, technology,
+     current affairs and sport, deduplicated by meaning and ranked to what I read.</p>
+
+  <input id="q" class="search" placeholder="search headlines, topics, dates…" autocomplete="off" aria-label="Search briefs">
+  <p id="count" class="count"></p>
+  <div id="results"></div>
+</main>
+
+<script>
+  const results = document.getElementById('results');
+  const count = document.getElementById('count');
+  const q = document.getElementById('q');
+  let data = [];
+
+  fetch('archive/index.json')
+    .then(r => r.ok ? r.json() : [])
+    .then(d => { data = d; render(d); })
+    .catch(() => { data = []; render([]); });
+
+  q.addEventListener('input', () => {
+    const t = q.value.toLowerCase().trim();
+    render(!t ? data : data.filter(e => e.text.includes(t) || e.date.includes(t)));
+  });
+
+  function esc(s){ return s.replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+  function render(list){
+    if (!data.length){
+      count.textContent = '';
+      results.innerHTML = '<p class="empty">No briefs yet — your first run will show up here.</p>';
+      return;
+    }
+    count.textContent = list.length + ' brief' + (list.length === 1 ? '' : 's');
+    results.innerHTML = list.map(e => `
+      <article class="entry">
+        <a class="date" href="${e.url}">${e.date} →</a>
+        <ul>
+          ${e.headlines.slice(0,3).map(h => `<li>${esc(h)}</li>`).join('')}
+          ${e.headlines.length > 3 ? `<li class="more">+${e.headlines.length - 3} more</li>` : ''}
+        </ul>
+      </article>`).join('') || '<p class="empty">No matches.</p>';
+  }
+</script>
+</body>
+</html>
