@@ -3,7 +3,8 @@ digest.py - main entry point.
 
 Daily pipeline:
   1. Learn from yesterday's thumbs up/down feedback.
-  2. Ask Claude (with live web search) for today's news as structured JSON.
+  2. Pull today's real headlines from free Google News RSS feeds, then use
+     Gemini (free tier) to clean and structure them into JSON.
   3. Score & rank every story against your learned preferences.
   4. Build an HTML email where each story has a 👍 / 👎 link.
   5. Send it to your inbox via Gmail.
@@ -20,8 +21,8 @@ from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 
 import requests
+import feedparser
 from google import genai
-from google.genai import types
 
 from preferences import (
     load_preferences, save_preferences,
@@ -77,36 +78,57 @@ def fetch_feedback():
 
 
 # ------------------------------------------------------------------- news in
+# Free Google News RSS searches (no key, no quota) — one per category.
+CATEGORY_QUERIES = {
+    "ai": "artificial intelligence OR machine learning",
+    "technology": "technology",
+    "current_affairs": "India",
+    "sports": "cricket India",
+}
+
+
+def _fetch_headlines(query, limit=8):
+    """Pull recent headlines for one query from Google News RSS (free, no key)."""
+    url = (f"https://news.google.com/rss/search?q={requests.utils.quote(query)}"
+           f"&hl=en-IN&gl=IN&ceid=IN:en")
+    feed = feedparser.parse(url)
+    return [e.get("title", "") for e in feed.entries[:limit] if e.get("title")]
+
+
 def get_news():
-    """Ask Gemini for today's news as structured JSON, using Google Search grounding.
+    """Get real current headlines from free RSS, then use Gemini (free tier, no
+    grounding needed) to select, rewrite, and structure them into clean JSON."""
+    # 1. gather today's real headlines per category from free RSS feeds
+    raw = {cat: _fetch_headlines(query) for cat, query in CATEGORY_QUERIES.items()}
+    if not any(raw.values()):
+        print("[error] no headlines came back from RSS")
+        return []
 
-    Uses the free tier (gemini-flash-latest, an alias that always points to the
-    current Flash model, so it won't break when Google rotates versions).
-    """
+    # 2. ask Gemini to turn the raw headlines into a clean, structured brief
     client = genai.Client(api_key=GEMINI_API_KEY)
-    today = datetime.date.today().strftime("%A, %d %B %Y")
+    headlines_text = json.dumps(raw, ensure_ascii=False, indent=2)
 
-    prompt = f"""Search for today's most important news ({today}) for a reader in India.
-Return ONLY valid JSON (no prose, no markdown fences) in exactly this shape:
+    prompt = f"""Here are today's raw news headlines from Google News, grouped by category:
+
+{headlines_text}
+
+Turn these into a clean daily brief. Return ONLY valid JSON (no prose, no markdown fences) in exactly this shape:
 {{
   "stories": [
     {{
-      "headline": "one crisp line",
-      "summary": "one short factual sentence, no fluff",
+      "headline": "one crisp line, rewritten cleanly",
+      "summary": "one short factual sentence",
       "category": "ai" | "technology" | "current_affairs" | "sports",
       "keywords": ["lowercase", "topic", "tags"]
     }}
   ]
 }}
-Give 4-5 stories per category. Keep it factual and current.
-Sports should lean cricket. Current affairs should lean India."""
+Pick the 4-5 most important, distinct stories per category. Rewrite headlines crisply,
+drop duplicates and clickbait, and keep it factual."""
 
     resp = client.models.generate_content(
         model="gemini-flash-latest",
         contents=prompt,
-        config=types.GenerateContentConfig(
-            tools=[types.Tool(google_search=types.GoogleSearch())],
-        ),
     )
 
     text = (resp.text or "").strip()
