@@ -14,6 +14,7 @@ Runs automatically every morning via GitHub Actions
 """
 
 import os
+import re
 import json
 import smtplib
 import datetime
@@ -88,11 +89,20 @@ CATEGORY_QUERIES = {
 
 
 def _fetch_headlines(query, limit=8):
-    """Pull recent headlines for one query from Google News RSS (free, no key)."""
+    """Pull recent stories for one query from Google News RSS (free, no key).
+    Returns title + snippet so the model has more to work with."""
     url = (f"https://news.google.com/rss/search?q={requests.utils.quote(query)}"
            f"&hl=en-IN&gl=IN&ceid=IN:en")
     feed = feedparser.parse(url)
-    return [e.get("title", "") for e in feed.entries[:limit] if e.get("title")]
+    items = []
+    for e in feed.entries[:limit]:
+        title = e.get("title", "")
+        if not title:
+            continue
+        # strip any HTML tags out of the summary snippet
+        snippet = re.sub("<[^<]+?>", "", e.get("summary", "")).strip()
+        items.append({"title": title, "snippet": snippet[:300]})
+    return items
 
 
 def get_news():
@@ -108,23 +118,24 @@ def get_news():
     client = genai.Client(api_key=GEMINI_API_KEY)
     headlines_text = json.dumps(raw, ensure_ascii=False, indent=2)
 
-    prompt = f"""Here are today's raw news headlines from Google News, grouped by category:
+    prompt = f"""Here are today's raw news items from Google News (title + snippet), grouped by category:
 
 {headlines_text}
 
-Turn these into a clean daily brief. Return ONLY valid JSON (no prose, no markdown fences) in exactly this shape:
+Turn these into a clean, informative daily brief. Return ONLY valid JSON (no prose, no markdown fences) in exactly this shape:
 {{
   "stories": [
     {{
       "headline": "one crisp line, rewritten cleanly",
-      "summary": "one short factual sentence",
+      "summary": "3-4 full sentences: what happened, why it matters, and any key number, name, or context. Written so the reader is fully informed without needing to open the article.",
       "category": "ai" | "technology" | "current_affairs" | "sports",
       "keywords": ["lowercase", "topic", "tags"]
     }}
   ]
 }}
 Pick the 4-5 most important, distinct stories per category. Rewrite headlines crisply,
-drop duplicates and clickbait, and keep it factual."""
+drop duplicates and clickbait. Make each summary genuinely substantive and self-contained —
+the reader should not need to read anything else. Keep it factual; do not invent specifics."""
 
     resp = client.models.generate_content(
         model="gemini-flash-latest",
